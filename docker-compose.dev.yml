@@ -1,0 +1,28 @@
+version: '3.9'
+
+# 로컬 개발용 오버라이드
+# 사용법: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  streaming:
+    image: streaming-server:dev    # 로컬 빌드 이미지 사용
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      - NODE_ENV=development
+      - INSTANCE_TYPE=local
+    volumes:
+      - ./src:/app/src             # 소스 핫리로드
+      - ./public:/app/public
+      - hls_data:/app/hls
+      - log_data:/app/logs
+    ports:
+      - "1935:1935"
+      - "8080:8080"                # 개발 시 직접 접근용
+      - "9998:9998/udp"
+
+  nginx:
+    ports:
+      - "3000:80"                  # 로컬에서 localhost:3000으로 접근

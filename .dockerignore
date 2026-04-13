@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+*.md
+hls/
+logs/
+.env*
+docker-compose*.yml
+.github/
+scripts/
+ecosystem.config.js
