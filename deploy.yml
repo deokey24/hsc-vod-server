@@ -1,0 +1,137 @@
+name: Build · Push · Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/streaming-server
+
+jobs:
+
+  build:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      short_sha: ${{ steps.sha.outputs.short }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Docker 메타데이터
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      - name: GHCR 로그인
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: BuildKit 설정
+        uses: docker/setup-buildx-action@v3
+
+      - name: 이미지 빌드 & 푸시
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── EC2에 설정 파일 동기화 (docker-compose.yml, nginx.conf) ──
+      - name: EC2 파일 동기화
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          source:   "docker-compose.yml,nginx/nginx.conf"
+          target:   "/home/ubuntu/streaming-server"
+          strip_components: 0
+
+      # ── 컨테이너 배포 ──────────────────────────────────────────
+      - name: EC2 배포
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          timeout:  180s
+          script: |
+            set -e
+            cd ~/streaming-server
+
+            # nginx 폴더 보장
+            mkdir -p nginx
+
+            # GHCR 로그인
+            echo "${{ secrets.GITHUB_TOKEN }}" | \
+              docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # 환경변수 설정
+            export GITHUB_REPOSITORY=${{ github.repository }}
+            export IMAGE_TAG=latest
+            export INSTANCE_TYPE=${{ vars.INSTANCE_TYPE }}
+
+            # 최신 이미지 pull
+            docker compose pull streaming
+
+            # 스트리밍 서버 재시작
+            docker compose up -d --no-deps streaming
+
+            # 헬스체크 대기 (최대 60초)
+            echo "헬스체크 대기 중..."
+            for i in $(seq 1 12); do
+              sleep 5
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' streaming-server 2>/dev/null || echo "none")
+              echo "  시도 $i/12: $STATUS"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "✓ streaming-server healthy"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "✗ 헬스체크 타임아웃"
+                docker logs streaming-server --tail 20
+                exit 1
+              fi
+            done
+
+            # nginx 시작
+            docker compose up -d nginx
+
+            # 최종 확인
+            sleep 3
+            curl -sf http://localhost/health && echo "✓ 배포 완료" || echo "✗ nginx 응답 없음"
+
+            # 이전 이미지 정리
+            docker image prune -f
