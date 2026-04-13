@@ -1,16 +1,16 @@
-version: '3.9'
-
 services:
 
   # ── 스트리밍 서버 ───────────────────────────────────────
   streaming:
-    image: ghcr.io/${GITHUB_REPOSITORY}/streaming-server:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-deokey24/hsc-vod-server}/streaming-server:${IMAGE_TAG:-latest}
     container_name: streaming-server
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - FFMPEG_PATH=/usr/bin/ffmpeg
       - INSTANCE_TYPE=${INSTANCE_TYPE:-t3.small}
+      - PORT=8888
+      - NMS_PORT=8080
     volumes:
       - hls_data:/app/hls       # HLS 세그먼트 (nginx와 공유)
       - log_data:/app/logs      # 로그 영구 보존
@@ -20,7 +20,7 @@ services:
     networks:
       - streaming_net
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/metrics"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8888/api/metrics"]
       interval: 30s
       timeout: 10s
       retries: 3
