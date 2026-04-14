@@ -885,13 +885,9 @@ const LT = {
   latencies: [], results: [],
 };
 
-const MBPS  = 4.692;
-const KRW   = 1350;
+// 전역 상수 재사용 (MBPS, KRW, P는 위에서 이미 선언됨)
 const EC2P  = {'t3.small':0.0272,'t3.medium':0.0544,'t3.large':0.1088,'t3.xlarge':0.2176,'t3.2xlarge':0.4352};
-const gbHr  = v => MBPS/8*3600*v/1024;
-const inst  = v => v<=5?'t3.small':v<=20?'t3.medium':v<=50?'t3.large':v<=80?'t3.xlarge':'t3.2xlarge';
-const dirHr = v => (EC2P[inst(v)]||0.0544) + gbHr(v)*0.126 + 0.0025;
-const cfHr  = v => 0.0272 + gbHr(v)*0.008 + 0.0025;
+// 중복 선언 제거 (위에서 이미 선언됨)
 
 function ltHost()   { return (document.getElementById('lt-host')||{value:''}).value.trim()||location.protocol+'//'+location.hostname; }
 function ltStream() { return (document.getElementById('lt-stream')||{value:'livestream_stream'}).value.trim(); }
