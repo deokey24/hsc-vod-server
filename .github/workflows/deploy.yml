@@ -19,19 +19,10 @@ jobs:
       contents: read
       packages: write
 
-    outputs:
-      short_sha: ${{ steps.sha.outputs.short }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Short SHA
-        id: sha
-        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Docker 메타데이터
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -39,18 +30,15 @@ jobs:
             type=raw,value=latest
             type=sha,prefix=sha-
 
-      - name: GHCR 로그인
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: BuildKit 설정
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: 이미지 빌드 & 푸시
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           push: true
@@ -65,11 +53,10 @@ jobs:
     environment: production
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── EC2에 설정 파일 동기화 (docker-compose.yml, nginx.conf) ──
-      - name: EC2 파일 동기화
+      # git에 있는 설정 파일을 EC2로 복사
+      - name: 설정 파일 동기화
         uses: appleboy/scp-action@v0.1.7
         with:
           host:     ${{ secrets.EC2_HOST }}
@@ -77,9 +64,8 @@ jobs:
           key:      ${{ secrets.EC2_SSH_KEY }}
           source:   "docker-compose.yml,nginx/nginx.conf"
           target:   "/home/ubuntu/streaming-server"
-          strip_components: 0
 
-      # ── 컨테이너 배포 ──────────────────────────────────────────
+      # 컨테이너 재배포
       - name: EC2 배포
         uses: appleboy/ssh-action@v1
         with:
@@ -91,47 +77,42 @@ jobs:
             set -e
             cd ~/streaming-server
 
-            # nginx 폴더 보장
-            mkdir -p nginx
-
             # GHCR 로그인
             echo "${{ secrets.GITHUB_TOKEN }}" | \
               docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 환경변수 설정
+            # 환경변수 (EC2 .env 파일에서 읽음)
             export GITHUB_REPOSITORY=${{ github.repository }}
             export IMAGE_TAG=latest
-            export INSTANCE_TYPE=${{ vars.INSTANCE_TYPE }}
 
             # 최신 이미지 pull
             docker compose pull streaming
 
-            # 스트리밍 서버 재시작
+            # 스트리밍 컨테이너 재시작
             docker compose up -d --no-deps streaming
 
-            # 헬스체크 대기 (최대 60초)
+            # 헬스체크 대기 (컨테이너 이름: vod-streaming)
             echo "헬스체크 대기 중..."
-            for i in $(seq 1 12); do
+            for i in $(seq 1 18); do
               sleep 5
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' streaming-server 2>/dev/null || echo "none")
-              echo "  시도 $i/12: $STATUS"
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' vod-streaming 2>/dev/null || echo "none")
+              echo "  $i/18: $STATUS"
               if [ "$STATUS" = "healthy" ]; then
-                echo "✓ streaming-server healthy"
+                echo "✓ vod-streaming healthy"
                 break
               fi
-              if [ $i -eq 12 ]; then
+              if [ $i -eq 18 ]; then
                 echo "✗ 헬스체크 타임아웃"
-                docker logs streaming-server --tail 20
+                docker logs vod-streaming --tail 20
                 exit 1
               fi
             done
 
-            # nginx 시작
+            # nginx 시작/재시작
             docker compose up -d nginx
 
-            # 최종 확인
             sleep 3
-            curl -sf http://localhost/health && echo "✓ 배포 완료" || echo "✗ nginx 응답 없음"
+            curl -sf http://localhost/health && echo "✓ 배포 완료"
 
             # 이전 이미지 정리
             docker image prune -f
