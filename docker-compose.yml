@@ -9,8 +9,8 @@ services:
       - NODE_ENV=production
       - FFMPEG_PATH=/usr/bin/ffmpeg
       - INSTANCE_TYPE=${INSTANCE_TYPE:-t3.small}
-      - PORT=8888
-      - NMS_PORT=8080
+      - API_PORT=8888
+
     volumes:
       - hls_data:/app/hls       # HLS 세그먼트 (nginx와 공유)
       - log_data:/app/logs      # 로그 영구 보존
