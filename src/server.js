@@ -36,8 +36,7 @@ function detectFFmpeg() {
 
 const FFMPEG_BIN = detectFFmpeg();
 const HLS_DIR    = path.join(__dirname, '../hls');
-const PORT_NMS   = 8080;   // node-media-server 전용 — 환경변수 금지 (NMS가 PORT를 가로챔)
-const PORT_API   = parseInt(process.env.API_PORT)  || 8888;  // Express 전용
+const PORT_HTTP  = parseInt(process.env.PORT)      || 8080;
 const PORT_RTMP  = parseInt(process.env.RTMP_PORT) || 1935;
 
 fs.mkdirSync(HLS_DIR, { recursive: true });
@@ -45,7 +44,7 @@ fs.mkdirSync(HLS_DIR, { recursive: true });
 // ── node-media-server: RTMP 수신 전용 (trans 블록 제거) ───
 const nms = new NodeMediaServer({
   rtmp: { port: PORT_RTMP, chunk_size: 4096, gop_cache: true, ping: 30, ping_timeout: 60 },
-  http: { port: PORT_NMS,  allow_origin: '*', mediaroot: HLS_DIR },
+  http: { port: PORT_HTTP, allow_origin: '*', mediaroot: HLS_DIR },
 });
 
 // ── FFmpeg 프로세스 관리 ──────────────────────────────────
@@ -64,12 +63,12 @@ function spawnFFmpeg(streamPath) {
 
   const args = [
     '-i', inputUrl,
-    '-vf', 'scale=1280:720',
+    '-vf', 'scale=1920:1080',
     '-c:v', 'libx264', '-preset', 'ultrafast',
     '-tune', 'zerolatency',
-    '-b:v', '2500k', '-maxrate', '3000k', '-bufsize', '3000k',
+    '-b:v', '4500k', '-maxrate', '5000k', '-bufsize', '5000k',
     '-r', '30', '-g', '30', '-sc_threshold', '0',
-    '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
     '-f', 'hls',
     '-hls_time', '1',
     '-hls_list_size', '3',
@@ -107,7 +106,7 @@ function killFFmpeg(streamPath) {
 }
 
 // ── NMS 이벤트 ───────────────────────────────────────────
-nms.on('prePublish',  function(id, sp) { metrics.onStreamStart(sp); setTimeout(function(){ spawnFFmpeg(sp); }, 1000); });
+nms.on('prePublish',  function(id, sp) { metrics.onStreamStart(sp); setTimeout(function(){ spawnFFmpeg(sp); }, 1500); });
 nms.on('donePublish', function(id, sp) { metrics.onStreamEnd(sp);   killFFmpeg(sp); });
 nms.on('prePlay',     function(id, sp) { metrics.onViewerPlay(id, sp); });
 nms.on('donePlay',    function(id)     { metrics.onViewerStop(id); });
@@ -184,15 +183,15 @@ function getLocalIP() {
 // ── 서버 시작 ─────────────────────────────────────────────
 nms.run();
 
-httpServer.listen(PORT_API,  '0.0.0.0', function() {
+httpServer.listen(PORT_HTTP, '0.0.0.0', function() {
   var ip = getLocalIP();
   console.log('\n======================================');
   console.log('  스트리밍 서버 시작됨');
   console.log('======================================');
-  console.log('  RTMP 입력:  rtmp://' + ip + ':' + PORT_RTMP + '/<앱>/<키>');
-  console.log('  HLS  출력:  http://' + ip + ':' + PORT_API  + '/hls/live/<앱>_<키>/index.m3u8');
-  console.log('  대시보드:   http://' + ip + ':' + PORT_API  + '/dashboard');
-  console.log('  메트릭 API: http://' + ip + ':' + PORT_API  + '/api/metrics');
+  console.log('  RTMP 입력:  rtmp://' + ip + ':' + PORT_RTMP + '/live/stream');
+  console.log('  HLS  출력:  http://' + ip + ':' + PORT_HTTP + '/hls/live/stream/index.m3u8');
+  console.log('  대시보드:   http://' + ip + ':' + PORT_HTTP + '/dashboard');
+  console.log('  메트릭 API: http://' + ip + ':' + PORT_HTTP + '/api/metrics');
   console.log('  FFmpeg:     ' + FFMPEG_BIN);
   console.log('======================================\n');
 });

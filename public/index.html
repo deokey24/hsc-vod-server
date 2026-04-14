@@ -144,6 +144,22 @@
     .code { font-family: 'SF Mono','Fira Code',monospace; font-size: 11px; color: var(--text2); line-height: 2; background: var(--bg); border-radius: 6px; padding: 12px 14px; border: 1px solid var(--border); }
     .ck { color: var(--text3); display: inline-block; width: 90px; }
 
+    .lt-btn {
+      padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--border2);
+      background: var(--bg2); color: var(--text2);
+      transition: all .15s;
+    }
+    .lt-btn:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .lt-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .lt-btn-stop { background: rgba(239,68,68,.15); color: #f87171; border-color: rgba(239,68,68,.3); }
+    .lt-btn-stop:hover { background: var(--red); color: #fff; }
+    .lt-btn-max { background: rgba(245,158,11,.15); color: #fcd34d; border-color: rgba(245,158,11,.3); }
+    .lt-btn-max:hover { background: var(--amber); color: #000; }
+    .cost-row { display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(37,45,66,.4);font-size:12px; }
+    .cost-row:last-child { border-bottom:none; }
+    .crow-l { color:var(--text3); }
+    .crow-v { font-weight:600; }
     @media (max-width: 960px) {
       .g4 { grid-template-columns: 1fr 1fr; }
       .cc  { grid-template-columns: 1fr; }
@@ -163,6 +179,7 @@
     <button class="nav-btn" data-tab="cost"     title="비용 분석">$</button>
     <button class="nav-btn" data-tab="system"   title="시스템">⚙</button>
     <div class="nav-sep"></div>
+    <button class="nav-btn" data-tab="loadtest" title="부하 테스트">⚡</button>
     <button class="nav-btn" data-tab="logs"     title="로그">≡</button>
   </nav>
 
@@ -425,6 +442,124 @@
           </div>
         </div>
       </div>
+
+      <!-- ══ 부하 테스트 탭 ══ -->
+      <div class="tab-panel" id="tab-loadtest">
+
+        <!-- 설정 카드 -->
+        <div class="card gf">
+          <div class="ctitle">부하 테스트 설정</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px">
+            <div>
+              <div style="color:var(--text3);font-size:11px;margin-bottom:6px">서버 URL</div>
+              <input id="lt-host" type="text" value="" placeholder="http://EC2_IP 또는 https://CF_도메인"
+                style="width:100%;background:var(--bg);border:1px solid var(--b2);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;font-family:monospace;outline:none">
+            </div>
+            <div>
+              <div style="color:var(--text3);font-size:11px;margin-bottom:6px">스트림 경로</div>
+              <input id="lt-stream" type="text" value="livestream_stream"
+                style="width:100%;background:var(--bg);border:1px solid var(--b2);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;font-family:monospace;outline:none">
+            </div>
+          </div>
+        </div>
+
+        <!-- 시청자 수 조절 버튼 -->
+        <div class="card gf">
+          <div class="ctitle">시청자 수 조절 (10명 단위)</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+            <button onclick="setViewers(0)"   class="lt-btn lt-btn-stop">■ 중지</button>
+            <button onclick="setViewers(10)"  class="lt-btn">10명</button>
+            <button onclick="setViewers(20)"  class="lt-btn">20명</button>
+            <button onclick="setViewers(30)"  class="lt-btn">30명</button>
+            <button onclick="setViewers(40)"  class="lt-btn">40명</button>
+            <button onclick="setViewers(50)"  class="lt-btn">50명</button>
+            <button onclick="setViewers(60)"  class="lt-btn">60명</button>
+            <button onclick="setViewers(70)"  class="lt-btn">70명</button>
+            <button onclick="setViewers(80)"  class="lt-btn">80명</button>
+            <button onclick="setViewers(90)"  class="lt-btn">90명</button>
+            <button onclick="setViewers(100)" class="lt-btn lt-btn-max">100명</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="font-size:13px;color:var(--text2)">현재 시뮬레이션:</div>
+            <div style="font-size:24px;font-weight:700;color:var(--blue)" id="lt-current-viewers">0명</div>
+            <div style="font-size:12px;color:var(--text3)" id="lt-status">대기 중</div>
+          </div>
+        </div>
+
+        <!-- 실시간 지표 4개 -->
+        <div class="g4">
+          <div class="card">
+            <div class="clabel">요청 수/초</div>
+            <div class="cval ct" id="lt-rps">0</div>
+            <div class="csub">HLS 폴링 요청</div>
+          </div>
+          <div class="card">
+            <div class="clabel">평균 응답시간</div>
+            <div class="cval cg" id="lt-latency">0<span class="cunit">ms</span></div>
+            <div class="csub">m3u8 응답 기준</div>
+          </div>
+          <div class="card">
+            <div class="clabel">에러율</div>
+            <div class="cval" id="lt-errors">0<span class="cunit">%</span></div>
+            <div class="csub" id="lt-error-count">에러 0건</div>
+          </div>
+          <div class="card">
+            <div class="clabel">시뮬레이션 전송량</div>
+            <div class="cval ca" id="lt-bytes">0<span class="cunit">MB</span></div>
+            <div class="csub" id="lt-duration">경과 0초</div>
+          </div>
+        </div>
+
+        <!-- 비용 비교 (EC2 직접 vs CF CDN) -->
+        <div class="sh">비용 실시간 계산 (1080p 30FPS 기준)</div>
+        <div class="cc">
+          <div class="card">
+            <div class="ctitle"><span class="tag tg-r">EC2 직접 서빙</span></div>
+            <div class="cost-row"><span class="crow-l">인스턴스 비용/hr</span><span class="crow-v" id="lc-ec2">$0.0000</span></div>
+            <div class="cost-row"><span class="crow-l">전송량 예상/hr</span><span class="crow-v" id="lc-gb">0.00 GB</span></div>
+            <div class="cost-row"><span class="crow-l">전송 비용/hr</span><span class="crow-v cr" id="lc-transfer">$0.0000</span></div>
+            <div class="cost-row"><span class="crow-l">EBS 비용/hr</span><span class="crow-v">$0.0025</span></div>
+            <div class="ctotal">
+              <span style="color:var(--text3);font-size:12px">합계/hr</span>
+              <span class="ctotal-v" id="lc-direct-total">$0.0000</span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:5px" id="lc-direct-krw">₩0</div>
+          </div>
+          <div class="card hl">
+            <div class="ctitle">
+              <span class="tag tg-t">EC2 + Cloudflare CDN</span>
+              <span class="save-badge" id="lc-save">절감 -</span>
+            </div>
+            <div class="cost-row"><span class="crow-l">인스턴스 비용/hr</span><span class="crow-v">$0.0272 (t3.small)</span></div>
+            <div class="cost-row"><span class="crow-l">CF 전송 비용/hr</span><span class="crow-v cg">$0.0000</span></div>
+            <div class="cost-row"><span class="crow-l">EC2→CF 소량/hr</span><span class="crow-v" id="lc-cf-transfer">$0.0000</span></div>
+            <div class="cost-row"><span class="crow-l">EBS 비용/hr</span><span class="crow-v">$0.0025</span></div>
+            <div class="ctotal">
+              <span style="color:var(--text3);font-size:12px">합계/hr</span>
+              <span class="ctotal-v cheap" id="lc-cf-total">$0.0000</span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:5px" id="lc-cf-krw">₩0</div>
+          </div>
+        </div>
+
+        <!-- 단계별 결과 테이블 -->
+        <div class="sh">단계별 테스트 결과</div>
+        <div class="card gf">
+          <table>
+            <thead>
+              <tr>
+                <th>시청자</th><th>테스트 시간</th><th>평균 응답</th>
+                <th>에러율</th><th>전송량</th>
+                <th class="tr">직접 비용/hr</th><th class="tr">CF CDN/hr</th>
+              </tr>
+            </thead>
+            <tbody id="lt-results-tbody">
+              <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px">테스트를 시작하면 결과가 표시됩니다</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div><!-- /tab-loadtest -->
 
       <!-- ══ 로그 탭 ══ -->
       <div class="tab-panel" id="tab-logs">
@@ -742,6 +877,123 @@ renderCostTab(sV, sH);
 renderMini(1);
 log('대시보드 시작 — 1080p 30FPS | LL-HLS | Cloudflare CDN','info');
 connectWS();
+
+// ── 부하 테스트 ──────────────────────────────────────────
+const LT = {
+  workers: [], targetViewers: 0, startTime: null,
+  totalRequests: 0, totalErrors: 0, totalBytes: 0,
+  latencies: [], results: [],
+};
+
+const MBPS  = 4.692;
+const KRW   = 1350;
+const EC2P  = {'t3.small':0.0272,'t3.medium':0.0544,'t3.large':0.1088,'t3.xlarge':0.2176,'t3.2xlarge':0.4352};
+const gbHr  = v => MBPS/8*3600*v/1024;
+const inst  = v => v<=5?'t3.small':v<=20?'t3.medium':v<=50?'t3.large':v<=80?'t3.xlarge':'t3.2xlarge';
+const dirHr = v => (EC2P[inst(v)]||0.0544) + gbHr(v)*0.126 + 0.0025;
+const cfHr  = v => 0.0272 + gbHr(v)*0.008 + 0.0025;
+
+function ltHost()   { return (document.getElementById('lt-host')||{value:''}).value.trim()||location.protocol+'//'+location.hostname; }
+function ltStream() { return (document.getElementById('lt-stream')||{value:'livestream_stream'}).value.trim(); }
+
+async function workerFetch(stop) {
+  while (!stop.stopped) {
+    const url = ltHost()+'/hls/live/'+ltStream()+'/index.m3u8';
+    const t0 = Date.now();
+    try {
+      const res = await fetch(url, {cache:'no-store', signal:AbortSignal.timeout(5000)});
+      const buf = await res.arrayBuffer();
+      LT.totalRequests++;
+      LT.totalBytes += buf.byteLength;
+      LT.latencies.push(Date.now()-t0);
+      if (LT.latencies.length>200) LT.latencies.shift();
+    } catch(e) { LT.totalErrors++; }
+    await new Promise(r=>setTimeout(r, 1000+Math.random()*300));
+  }
+}
+
+window.setViewers = function(n) {
+  // 버튼 active
+  document.querySelectorAll('.lt-btn').forEach(b=>b.classList.remove('active'));
+  if (n>0 && window.event && window.event.target) window.event.target.classList.add('active');
+
+  // 이전 결과 저장
+  if (LT.targetViewers>0 && LT.startTime) {
+    const sec = ((Date.now()-LT.startTime)/1000).toFixed(0);
+    const lat = LT.latencies.length>0 ? Math.round(LT.latencies.reduce((a,b)=>a+b,0)/LT.latencies.length) : 0;
+    const err = LT.totalRequests>0 ? (LT.totalErrors/LT.totalRequests*100).toFixed(1) : '0.0';
+    LT.results.push({v:LT.targetViewers, sec, lat, err, mb:(LT.totalBytes/1024/1024).toFixed(2), dir:dirHr(LT.targetViewers), cf:cfHr(LT.targetViewers)});
+    renderLTResults();
+  }
+
+  LT.workers.forEach(w=>{w.stopped=true;});
+  LT.workers=[];
+  LT.targetViewers=n; LT.startTime=n>0?Date.now():null;
+  LT.totalRequests=0; LT.totalErrors=0; LT.totalBytes=0; LT.latencies=[];
+
+  const cv = document.getElementById('lt-current-viewers');
+  const st = document.getElementById('lt-status');
+  if (cv) cv.textContent = n+'명';
+  if (st) st.textContent = n>0?'테스트 중...':'대기 중';
+
+  for (let i=0;i<n;i++) {
+    const stop={stopped:false};
+    LT.workers.push(stop);
+    workerFetch(stop);
+  }
+  updateLTCost(n);
+};
+
+function updateLTCost(v) {
+  if (!v) return;
+  const i=inst(v), e=EC2P[i], g=gbHr(v), tf=g*0.126, dir=e+tf+0.0025, cf=0.0272+g*0.008+0.0025;
+  const pct=Math.round((1-cf/dir)*100);
+  const s = id => document.getElementById(id);
+  if(s('lc-ec2'))          s('lc-ec2').textContent          = '$'+e.toFixed(4)+' ('+i+')';
+  if(s('lc-gb'))           s('lc-gb').textContent           = g.toFixed(2)+' GB';
+  if(s('lc-transfer'))     s('lc-transfer').textContent     = '$'+tf.toFixed(4);
+  if(s('lc-direct-total')) s('lc-direct-total').textContent = '$'+dir.toFixed(4);
+  if(s('lc-direct-krw'))   s('lc-direct-krw').textContent   = '₩'+Math.round(dir*KRW).toLocaleString();
+  if(s('lc-cf-transfer'))  s('lc-cf-transfer').textContent  = '$'+(g*0.008).toFixed(4);
+  if(s('lc-cf-total'))     s('lc-cf-total').textContent     = '$'+cf.toFixed(4);
+  if(s('lc-cf-krw'))       s('lc-cf-krw').textContent       = '₩'+Math.round(cf*KRW).toLocaleString()+' ('+pct+'% 절감)';
+  if(s('lc-save'))         s('lc-save').textContent         = pct+'% 절감';
+}
+
+function renderLTResults() {
+  const tb = document.getElementById('lt-results-tbody');
+  if (!tb || !LT.results.length) return;
+  tb.innerHTML = LT.results.map(r=>`
+    <tr>
+      <td><strong>${r.v}명</strong></td>
+      <td>${r.sec}초</td>
+      <td>${r.lat}ms</td>
+      <td><span class="tag ${+r.err>5?'tg-r':'tg-g'}">${r.err}%</span></td>
+      <td>${r.mb} MB</td>
+      <td class="tr ca">$${r.dir.toFixed(4)}</td>
+      <td class="tr cg">$${r.cf.toFixed(4)}</td>
+    </tr>`).join('');
+}
+
+setInterval(()=>{
+  if (!LT.targetViewers||!LT.startTime) return;
+  const sec = Math.round((Date.now()-LT.startTime)/1000);
+  const lat = LT.latencies.length>0?Math.round(LT.latencies.reduce((a,b)=>a+b,0)/LT.latencies.length):0;
+  const err = LT.totalRequests>0?(LT.totalErrors/LT.totalRequests*100).toFixed(1):'0.0';
+  const rps = sec>0?(LT.totalRequests/sec).toFixed(1):'0';
+  const mb  = (LT.totalBytes/1024/1024).toFixed(2);
+  const s   = id=>document.getElementById(id);
+  if(s('lt-rps'))      s('lt-rps').textContent      = rps;
+  if(s('lt-latency'))  s('lt-latency').innerHTML     = lat+'<span class="cunit">ms</span>';
+  if(s('lt-errors'))   s('lt-errors').innerHTML      = err+'<span class="cunit">%</span>';
+  if(s('lt-error-count')) s('lt-error-count').textContent = '에러 '+LT.totalErrors+'건';
+  if(s('lt-bytes'))    s('lt-bytes').innerHTML       = mb+'<span class="cunit">MB</span>';
+  if(s('lt-duration')) s('lt-duration').textContent  = '경과 '+sec+'초';
+}, 1000);
+
+// URL 자동 채우기
+const ltHostEl = document.getElementById('lt-host');
+if (ltHostEl) ltHostEl.value = location.protocol+'//'+location.hostname;
 </script>
 </body>
 </html>
